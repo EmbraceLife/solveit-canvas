@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Solveit Drawing Overlay",
+  "version": "1.0",
+  "content_scripts": [
+    {
+      "matches": ["https://*.solve.it.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [{
+    "resources": ["fabric.min.js", "icons.js", "db.js", "canvas.js", "tabs.js", "toolbar.js", "send.js"],
+    "matches": ["https://*.solve.it.com/*"]
+  }]
+}
