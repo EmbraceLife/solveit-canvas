@@ -1,6 +1,6 @@
-# SolveIt Drawing Overlay
+# SolveIt Canvas
 
-A drawing overlay for [SolveIt](https://solveit.fast.ai). Click the sparkles
+A drawing canvas overlay for [SolveIt](https://solveit.fast.ai). Click the sparkles
 button in the nav bar, sketch on a canvas, and send your drawing straight to the
 AI as a prompt or save it as a note. Built on [Fabric.js](http://fabricjs.com/)
 for full-featured vector drawing with shapes, text, zoom, and pan.
