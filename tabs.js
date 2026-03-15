@@ -5,7 +5,7 @@
     const DB = window.DrawingDB;
     const S = window._drawState;
 
-    const tabState = {};  // id -> { meta, canvasJSON, dirty }
+    const tabState = {};  // id -> { meta, canvasJSON, dirty, loaded }
     let activeId = null;
     let strip = null;
     let addBtn = null;
@@ -33,27 +33,64 @@
         te.style.borderBottom = id === activeId ? '1px solid white' : '1px solid #ccc';
     }
 
+    // Convert blob: URLs to base64 data URLs so images survive reload/re-import
+    function blobToDataURL(url) {
+        return fetch(url).then(r => r.blob()).then(blob => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        }));
+    }
+
+    async function convertBlobUrls(json) {
+        if (!json || !json.objects) return json;
+        for (const obj of json.objects) {
+            // fabric Image objects store the URL in `src`
+            if (obj.src && obj.src.startsWith('blob:')) {
+                try {
+                    obj.src = await blobToDataURL(obj.src);
+                    console.log('[Solveit Canvas] Converted blob URL to data URL for', obj.type);
+                } catch (err) {
+                    console.warn('[Solveit Canvas] Could not convert blob URL:', obj.src, err);
+                }
+            }
+        }
+        return json;
+    }
+
     function captureActive() {
         if (!activeId || !S.fc) return;
         const t = tabState[activeId];
-        if (t) t.canvasJSON = S.fc.toJSON();
+        // Only capture if tab loaded successfully — prevents saving empty canvas after failed load
+        if (t && t.loaded) t.canvasJSON = S.fc.toJSON();
     }
 
     async function loadTab(id) {
         const t = tabState[id];
         if (!S.fc || !t) return;
+        t.loaded = false;
         // Lazy load from DB if not in memory
         if (t.canvasJSON === null) t.canvasJSON = await DB.loadData(id);
         // Clear undo/redo on tab switch
         S.undoStack.length = 0;
         S.redoStack.length = 0;
         if (t.canvasJSON) {
-            await S.fc.loadFromJSON(t.canvasJSON);
-            S.fc.renderAll();
+            try {
+                await S.fc.loadFromJSON(t.canvasJSON);
+                S.fc.renderAll();
+                t.loaded = true;
+            } catch (err) {
+                console.error('[Solveit Canvas] loadFromJSON failed for tab', id, err);
+                S.fc.clear();
+                S.fc.backgroundColor = 'white';
+                S.fc.renderAll();
+            }
         } else {
             S.fc.clear();
             S.fc.backgroundColor = 'white';
             S.fc.renderAll();
+            t.loaded = true;
         }
     }
 
@@ -132,7 +169,7 @@
             if (toOpen.length === 0) toOpen.push(...metas.slice(0, 1));
 
             toOpen.forEach(m => {
-                tabState[m.id] = { meta: m, canvasJSON: null, dirty: false };
+                tabState[m.id] = { meta: m, canvasJSON: null, dirty: false, loaded: false };
                 strip.appendChild(makeTabEl(m.id));
             });
 
@@ -273,7 +310,7 @@ activeId = (session?.activeId && tabState[session.activeId]) ? session.activeId 
             if (!name) { untitledCounter++; name = untitledCounter === 1 ? 'Untitled' : 'Untitled ' + untitledCounter; }
             const m = DB.createMeta(name, S.dialogName);
             await DB.save(m, null);
-            tabState[m.id] = { meta: m, canvasJSON: null, dirty: false };
+            tabState[m.id] = { meta: m, canvasJSON: null, dirty: false, loaded: false };
             strip.insertBefore(makeTabEl(m.id), addWrap);
             await window.DrawingTabs.switchTab(m.id);
             saveSession();
@@ -306,20 +343,25 @@ async closeTab(id) {
         async openTab(meta) {
             // Re-open a closed canvas from DB
             if (tabState[meta.id]) { await window.DrawingTabs.switchTab(meta.id); return; }
-            tabState[meta.id] = { meta, canvasJSON: null, dirty: false };
+            tabState[meta.id] = { meta, canvasJSON: null, dirty: false, loaded: false };
             strip.insertBefore(makeTabEl(meta.id), addWrap);
             await window.DrawingTabs.switchTab(meta.id);
         },
 
         async importCanvas(sourceMeta) {
             // Copy canvas from another dialog into current dialog
-            const canvasJSON = await DB.loadData(sourceMeta.id);
-            const m = DB.createMeta(sourceMeta.name + ' (imported)', S.dialogName);
-            m.thumbnail = sourceMeta.thumbnail;
-            await DB.save(m, canvasJSON);
-            tabState[m.id] = { meta: m, canvasJSON, dirty: false };
-            strip.insertBefore(makeTabEl(m.id), addWrap);
-            await window.DrawingTabs.switchTab(m.id);
+            try {
+                const canvasJSON = await DB.loadData(sourceMeta.id);
+                if (!canvasJSON) console.warn('[Solveit Canvas] Import: no canvas data found for', sourceMeta.id, sourceMeta.name);
+                const m = DB.createMeta(sourceMeta.name + ' (imported)', S.dialogName);
+                m.thumbnail = sourceMeta.thumbnail;
+                await DB.save(m, canvasJSON);
+                tabState[m.id] = { meta: m, canvasJSON, dirty: false, loaded: false };
+                strip.insertBefore(makeTabEl(m.id), addWrap);
+                await window.DrawingTabs.switchTab(m.id);
+            } catch (err) {
+                console.error('[Solveit Canvas] importCanvas failed:', err);
+            }
         },
 
         markDirty() {
@@ -332,7 +374,7 @@ async closeTab(id) {
             if (!activeId || !S.fc) return;
             const t = tabState[activeId];
             if (!t) return;
-            const canvasJSON = S.fc.toJSON();
+            const canvasJSON = await convertBlobUrls(S.fc.toJSON());
             t.canvasJSON = canvasJSON;
             t.meta.thumbnail = await DC.exportThumbnail();
             await DB.save(t.meta, canvasJSON);

@@ -244,10 +244,14 @@ _swapStack(from, to, reverse) {
                 const imgItem = items.find(i => i.type.startsWith('image/'));
                 if (imgItem) {
                     const blob = imgItem.getAsFile();
-                    const url = URL.createObjectURL(blob);
-                    const img = await fabric.FabricImage.fromURL(url);
-                    fitAndAdd(img);
-                    URL.revokeObjectURL(url); return;
+                    const dataUrl = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                    const img = await fabric.FabricImage.fromURL(dataUrl);
+                    fitAndAdd(img); return;
                 }
                 const text = (e.clipboardData?.getData('text/plain') || '').trim();
                 if (/^<svg[\s\S]*<\/svg>$/i.test(text)) {

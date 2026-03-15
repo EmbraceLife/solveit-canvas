@@ -11,7 +11,11 @@
         return fetch(url, { method: 'POST', body: fd });
     }
 
-    let sendBtn, updateSendLabel;
+    // Anchor state — which message to insert before
+    S.anchorId = null;
+    S.anchorSelecting = false;
+
+    let sendBtn, updateSendLabel, anchorBtn, anchorLabel;
 
     window.DrawingSend = {
         createSendGroup() {
@@ -53,6 +57,79 @@
             return sendGroup;
         },
 
+        createAnchorGroup() {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'display:flex;align-items:center;gap:4px;margin-left:6px';
+
+            // Toggle button: click to enter selection mode
+            anchorBtn = document.createElement('button');
+            anchorBtn.textContent = '📌';
+            anchorBtn.title = 'Set anchor message (drawing will be inserted before it)';
+            anchorBtn.style.cssText = smallBtn + ';font-size:14px;opacity:0.5';
+
+            // Label: shows selected message ID
+            anchorLabel = document.createElement('span');
+            anchorLabel.style.cssText = 'font-size:10px;font-family:monospace;color:#666;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+
+            function updateAnchorUI() {
+                if (S.anchorSelecting) {
+                    anchorBtn.style.opacity = '1';
+                    anchorBtn.style.background = '#fef3c7';
+                    anchorBtn.style.borderColor = '#f59e0b';
+                    anchorLabel.textContent = 'click a msg…';
+                    anchorLabel.style.color = '#f59e0b';
+                } else if (S.anchorId) {
+                    anchorBtn.style.opacity = '1';
+                    anchorBtn.style.background = '#dcfce7';
+                    anchorBtn.style.borderColor = '#22c55e';
+                    anchorLabel.textContent = S.anchorId;
+                    anchorLabel.style.color = '#22c55e';
+                } else {
+                    anchorBtn.style.opacity = '0.5';
+                    anchorBtn.style.background = 'white';
+                    anchorBtn.style.borderColor = '#ccc';
+                    anchorLabel.textContent = '';
+                    anchorLabel.style.color = '#666';
+                }
+            }
+
+            anchorBtn.onclick = () => {
+                if (S.anchorSelecting) {
+                    // Cancel selection mode
+                    S.anchorSelecting = false;
+                } else if (S.anchorId) {
+                    // Clear existing anchor
+                    S.anchorId = null;
+                    S.anchorSelecting = false;
+                } else {
+                    // Enter selection mode
+                    S.anchorSelecting = true;
+                }
+                updateAnchorUI();
+            };
+
+            // Document click listener — captures message ID from [data-sm]
+            document.addEventListener('click', e => {
+                if (!S.anchorSelecting) return;
+                // Walk up from click target to find the message wrapper
+                const msgEl = e.target.closest('[data-sm]');
+                console.log('[Canvas Anchor] clicked element:', e.target.tagName, 'closest [data-sm]:', msgEl?.tagName, 'dataset:', msgEl?.dataset);
+                if (!msgEl) return;
+                const msgId = msgEl.id;
+                console.log('[Canvas Anchor] captured msgId:', msgId);
+                if (!msgId) return;
+                e.preventDefault();
+                e.stopPropagation();
+                S.anchorId = msgId;
+                S.anchorSelecting = false;
+                updateAnchorUI();
+            }, true);  // useCapture to intercept before other handlers
+
+            updateAnchorUI();
+            wrap.append(anchorBtn, anchorLabel);
+            return wrap;
+        },
+
         async send() {
             if (!S.fc) return;
             const overlayDiv = document.getElementById('fabric-canvas-overlay');
@@ -64,20 +141,43 @@
                 const filename = 'pasted_image_' + imageid + '.png';
                 const dlg = _edVar('dlg_name');
                 const msgType = S.sendMode === 'note' ? 'note' : 'prompt';
+                console.log('[Canvas Send] dlg:', dlg, 'msgType:', msgType, 'anchorId:', S.anchorId, 'sendMode:', S.sendMode, 'blob size:', blob?.size);
 
-                const j1 = await (await post('/upload_attachment_', {
-                    id_: '', msg_type: msgType, dlg_name: dlg,
-                    file: new File([blob], filename, { type: blob.type })
-                })).json();
+                let msgId;
+                if (S.anchorId) {
+                    // Create message at anchor position first, then attach image
+                    const createParams = {
+                        dlg_name: dlg, msg_type: msgType, content: '',
+                        placement: 'add_before', id_: S.anchorId
+                    };
+                    console.log('[Canvas Send] creating at anchor with params:', createParams);
+                    const rawResp = await fetch('/add_relative_', { method: 'POST', body: new URLSearchParams(createParams) });
+                    console.log('[Canvas Send] add_relative_ response status:', rawResp.status);
+                    const resp = await rawResp.json();
+                    console.log('[Canvas Send] add_relative_ response:', resp);
+                    msgId = resp.id;
+                    // Attach image to existing message
+                    await post('/upload_attachment_', {
+                        id_: msgId, msg_type: msgType, dlg_name: dlg,
+                        file: new File([blob], filename, { type: blob.type })
+                    });
+                } else {
+                    // No anchor — create via upload (appends at end)
+                    const j1 = await (await post('/upload_attachment_', {
+                        id_: '', msg_type: msgType, dlg_name: dlg,
+                        file: new File([blob], filename, { type: blob.type })
+                    })).json();
+                    msgId = j1.id;
+                }
 
                 await post('/update_msg_', {
-                    id_: j1.id, dlg_name: dlg,
+                    id_: msgId, dlg_name: dlg,
                     content: S.sendMode !== 'note'
                         ? `![${filename}](attachment:${imageid})\n\n${S.promptText}`
                         : `![${filename}](attachment:${imageid})`
                 });
 
-                if (S.sendMode === 'prompt_run') await post('/add_runq_', { ids: j1.id, dlg_name: dlg });
+                if (S.sendMode === 'prompt_run') await post('/add_runq_', { ids: msgId, dlg_name: dlg });
 
                 if (overlayDiv) overlayDiv.style.display = 'none';
                 sendBtn.textContent = '✅';
@@ -130,7 +230,9 @@
         // Toolbar + send group
         const toolbar = window.DrawingToolbar.create();
         const sendGroup = window.DrawingSend.createSendGroup();
+        const anchorGroup = window.DrawingSend.createAnchorGroup();
         toolbar.appendChild(sendGroup);
+        toolbar.appendChild(anchorGroup);
 
         // Canvas container
         const canvasContainer = document.createElement('div');
