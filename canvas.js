@@ -239,6 +239,9 @@ _swapStack(from, to, reverse) {
             div.addEventListener('paste', async e => {
                 const fc = S.fc;
                 if (!fc) return;
+                // Don't intercept paste when typing in a text field (e.g. prompt textarea)
+                const tag = document.activeElement?.tagName;
+                if (tag === 'TEXTAREA' || tag === 'INPUT') return;
                 e.preventDefault(); e.stopPropagation();
                 const items = [...(e.clipboardData?.items || [])];
                 const imgItem = items.find(i => i.type.startsWith('image/'));
