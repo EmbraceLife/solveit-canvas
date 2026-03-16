@@ -15,10 +15,14 @@
         thickness: 2,
         sendMode: 'prompt_run',
         promptText: 'Describe this drawing.',
+        placement: 'end',       // 'end' | 'beginning' | 'after_selected' | 'after_id'
+        anchorId: '',           // message ID for 'after_id' placement
         disposers: [],
         canvasContainer: null,
         modeButtons: {},
         btnStyles: {},
+        urlToIdb: new Map(),    // objectURL -> idb image ID (for serialization)
+        cleanupUrls: () => {},  // revoke object URLs from last resolveImageRefs
     };
 
     const dotCursor = `url("data:image/svg+xml;base64,${btoa(ICONS.dotCursorSvg)}") 4 4, crosshair`;
@@ -239,15 +243,21 @@ _swapStack(from, to, reverse) {
             div.addEventListener('paste', async e => {
                 const fc = S.fc;
                 if (!fc) return;
+                // Don't intercept paste when typing in a text field (e.g. prompt textarea, ID input)
+                const tag = document.activeElement?.tagName;
+                if (tag === 'TEXTAREA' || tag === 'INPUT') return;
                 e.preventDefault(); e.stopPropagation();
                 const items = [...(e.clipboardData?.items || [])];
                 const imgItem = items.find(i => i.type.startsWith('image/'));
                 if (imgItem) {
                     const blob = imgItem.getAsFile();
-                    const url = URL.createObjectURL(blob);
-                    const img = await fabric.FabricImage.fromURL(url);
+                    // Store blob in IndexedDB, render via temporary object URL
+                    const imgId = await window.DrawingDB.saveImage(blob);
+                    const objUrl = URL.createObjectURL(blob);
+                    S.urlToIdb.set(objUrl, imgId);  // track for serialization
+                    const img = await fabric.FabricImage.fromURL(objUrl);
                     fitAndAdd(img);
-                    URL.revokeObjectURL(url); return;
+                    return;  // don't revoke — fabric needs the URL while canvas is live
                 }
                 const text = (e.clipboardData?.getData('text/plain') || '').trim();
                 if (/^<svg[\s\S]*<\/svg>$/i.test(text)) {

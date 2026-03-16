@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Solveit Drawing Overlay",
-  "version": "1.0",
+  "name": "SolveIt Canvas",
+  "version": "1.1",
   "content_scripts": [
     {
       "matches": ["https://*.solve.it.com/*"],

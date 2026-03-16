@@ -65,19 +65,55 @@
                 const dlg = _edVar('dlg_name');
                 const msgType = S.sendMode === 'note' ? 'note' : 'prompt';
 
-                const j1 = await (await post('/upload_attachment_', {
-                    id_: '', msg_type: msgType, dlg_name: dlg,
-                    file: new File([blob], filename, { type: blob.type })
-                })).json();
+                // Resolve placement anchor
+                let anchorId = null;
+                let placement = null;
+                if (S.placement === 'beginning') {
+                    // Find first message in dialog
+                    const firstMsg = document.querySelector('#dialog-container > [id]');
+                    if (firstMsg) { anchorId = firstMsg.id; placement = 'add_before'; }
+                } else if (S.placement === 'after_selected') {
+                    const sel = typeof selectedMsgIds === 'function' ? selectedMsgIds() : '';
+                    if (sel) { anchorId = sel; placement = 'add_after'; }
+                } else if (S.placement === 'after_id') {
+                    if (S.anchorId) {
+                        // Verify the message exists in DOM
+                        const el = document.getElementById(S.anchorId);
+                        if (el) { anchorId = S.anchorId; placement = 'add_after'; }
+                        else console.warn('[Canvas Send] Message ID not found:', S.anchorId, '— falling back to end');
+                    }
+                }
+
+                let msgId;
+                if (anchorId && placement) {
+                    // Create message at anchor position, then attach image
+                    const resp = await (await fetch('/add_relative_', {
+                        method: 'POST',
+                        body: new URLSearchParams({ dlg_name: dlg, msg_type: msgType, content: '', placement, id_: anchorId })
+                    })).json();
+                    msgId = resp.id;
+                    // Attach image to the positioned message
+                    await post('/upload_attachment_', {
+                        id_: msgId, msg_type: msgType, dlg_name: dlg,
+                        file: new File([blob], filename, { type: blob.type })
+                    });
+                } else {
+                    // Default: append at end via upload
+                    const j1 = await (await post('/upload_attachment_', {
+                        id_: '', msg_type: msgType, dlg_name: dlg,
+                        file: new File([blob], filename, { type: blob.type })
+                    })).json();
+                    msgId = j1.id;
+                }
 
                 await post('/update_msg_', {
-                    id_: j1.id, dlg_name: dlg,
+                    id_: msgId, dlg_name: dlg,
                     content: S.sendMode !== 'note'
                         ? `![${filename}](attachment:${imageid})\n\n${S.promptText}`
                         : `![${filename}](attachment:${imageid})`
                 });
 
-                if (S.sendMode === 'prompt_run') await post('/add_runq_', { ids: j1.id, dlg_name: dlg });
+                if (S.sendMode === 'prompt_run') await post('/add_runq_', { ids: msgId, dlg_name: dlg });
 
                 if (overlayDiv) overlayDiv.style.display = 'none';
                 sendBtn.textContent = '✅';

@@ -230,6 +230,70 @@ toolbar.append(dotToggle, makeSep());
             promptWrap.append(promptBtn, promptDropBtn, promptPopup, presetMenu);
             toolbar.append(promptWrap, makeSep());
 
+            // Placement dropdown (📍)
+            const placementLabels = { end: 'At end', beginning: 'At beginning', after_selected: 'After selected', after_id: 'After message ID…' };
+            const placementWrap = document.createElement('div');
+            placementWrap.style.cssText = 'position:relative;display:inline-block';
+            const placementBtn = document.createElement('button');
+            placementBtn.textContent = '📍';
+            placementBtn.title = 'Placement: At end';
+            placementBtn.style.cssText = smallBtn + ';font-size:14px';
+
+            const placementMenu = document.createElement('div');
+            placementMenu.style.cssText = 'display:none;position:absolute;top:100%;right:0;background:white;border:1px solid #ccc;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10;min-width:180px;margin-top:2px';
+            openMenus.push(placementMenu);
+
+            // ID input popup (for after_id mode)
+            const idPopup = document.createElement('div');
+            idPopup.style.cssText = 'display:none;position:absolute;top:100%;right:0;background:white;border:1px solid #ccc;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10;margin-top:2px;padding:8px;width:220px';
+            const idLabel = document.createElement('div');
+            idLabel.textContent = 'Message ID:';
+            idLabel.style.cssText = 'font-size:11px;color:#666;margin-bottom:4px';
+            const idInput = document.createElement('input');
+            idInput.type = 'text';
+            idInput.placeholder = '_abc12345';
+            idInput.value = S.anchorId;
+            idInput.style.cssText = 'width:100%;border:1px solid #ccc;border-radius:3px;padding:4px 6px;font-size:12px;font-family:monospace';
+            idInput.oninput = () => { S.anchorId = idInput.value.trim(); };
+            idPopup.append(idLabel, idInput);
+            idPopup.onclick = e => e.stopPropagation();
+            openMenus.push(idPopup);
+
+            const placementItems = {};
+            function setPlacement(mode) {
+                S.placement = mode;
+                placementBtn.title = 'Placement: ' + placementLabels[mode];
+                Object.entries(placementItems).forEach(([m, el]) => {
+                    el.textContent = (m === mode ? '✓ ' : '   ') + placementLabels[m];
+                });
+            }
+
+            ['end', 'beginning', 'after_selected', 'after_id'].forEach(mode => {
+                const item = document.createElement('div');
+                item.textContent = (mode === S.placement ? '✓ ' : '   ') + placementLabels[mode];
+                item.style.cssText = 'padding:5px 12px;cursor:pointer;font-size:12px;white-space:nowrap';
+                placementItems[mode] = item;
+                item.onmouseenter = () => item.style.background = '#f0f0f0';
+                item.onmouseleave = () => item.style.background = 'white';
+                item.onclick = (e) => {
+                    placementMenu.style.display = 'none';
+                    if (mode === 'after_id') {
+                        e.stopPropagation();
+                        setPlacement(mode);
+                        openMenus.forEach(m => m.style.display = 'none');
+                        idPopup.style.display = 'block';
+                        idInput.focus();
+                    } else {
+                        setPlacement(mode);
+                    }
+                };
+                placementMenu.appendChild(item);
+            });
+
+            placementBtn.onclick = e => { e.stopPropagation(); openMenus.forEach(m => m.style.display = 'none'); placementMenu.style.display = placementMenu.style.display === 'none' ? 'block' : 'none'; };
+            placementWrap.append(placementBtn, placementMenu, idPopup);
+            toolbar.append(placementWrap, makeSep());
+
             return toolbar;
         }
     };

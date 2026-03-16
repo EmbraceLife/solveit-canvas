@@ -36,24 +36,52 @@
     function captureActive() {
         if (!activeId || !S.fc) return;
         const t = tabState[activeId];
-        if (t) t.canvasJSON = S.fc.toJSON();
+        if (!t || !t.loaded) return;  // don't capture if tab never loaded successfully
+        const json = S.fc.toJSON();
+        // Rewrite live object URLs back to idb:// refs before storing
+        DB.rewriteToIdbRefs(json, S.urlToIdb);
+        t.canvasJSON = json;
     }
 
     async function loadTab(id) {
         const t = tabState[id];
         if (!S.fc || !t) return;
+        // Clean up object URLs from previous tab
+        S.cleanupUrls();
+        S.urlToIdb.clear();
         // Lazy load from DB if not in memory
         if (t.canvasJSON === null) t.canvasJSON = await DB.loadData(id);
         // Clear undo/redo on tab switch
         S.undoStack.length = 0;
         S.redoStack.length = 0;
         if (t.canvasJSON) {
-            await S.fc.loadFromJSON(t.canvasJSON);
-            S.fc.renderAll();
+            try {
+                // Deep clone so resolveImageRefs doesn't mutate the stored copy
+                const jsonCopy = JSON.parse(JSON.stringify(t.canvasJSON));
+                // Resolve idb:// refs to temporary object URLs
+                S.cleanupUrls = await DB.resolveImageRefs(jsonCopy);
+                // Build reverse map (objectURL -> idb ID) for serialization
+                for (let i = 0; i < (t.canvasJSON.objects || []).length; i++) {
+                    const origSrc = t.canvasJSON.objects[i]?.src;
+                    const resolvedSrc = jsonCopy.objects[i]?.src;
+                    if (origSrc?.startsWith(DB.IDB_PREFIX) && resolvedSrc?.startsWith('blob:')) {
+                        S.urlToIdb.set(resolvedSrc, origSrc.slice(DB.IDB_PREFIX.length));
+                    }
+                }
+                await S.fc.loadFromJSON(jsonCopy);
+                S.fc.renderAll();
+                t.loaded = true;
+            } catch (err) {
+                console.error('[DrawingTabs] Failed to load tab', id, err);
+                S.fc.clear();
+                S.fc.backgroundColor = 'white';
+                S.fc.renderAll();
+            }
         } else {
             S.fc.clear();
             S.fc.backgroundColor = 'white';
             S.fc.renderAll();
+            t.loaded = true;
         }
     }
 
@@ -314,6 +342,23 @@ async closeTab(id) {
         async importCanvas(sourceMeta) {
             // Copy canvas from another dialog into current dialog
             const canvasJSON = await DB.loadData(sourceMeta.id);
+            // Deep-copy any idb:// referenced images so the import is independent
+            if (canvasJSON?.objects) {
+                for (const obj of canvasJSON.objects) {
+                    if (obj.src?.startsWith(DB.IDB_PREFIX)) {
+                        const oldId = obj.src.slice(DB.IDB_PREFIX.length);
+                        try {
+                            const imgData = await DB.loadImage(oldId);
+                            if (imgData?.blob) {
+                                const newId = await DB.saveImage(imgData.blob);
+                                obj.src = DB.IDB_PREFIX + newId;
+                            }
+                        } catch (err) {
+                            console.error('[DrawingTabs] Failed to copy image', oldId, err);
+                        }
+                    }
+                }
+            }
             const m = DB.createMeta(sourceMeta.name + ' (imported)', S.dialogName);
             m.thumbnail = sourceMeta.thumbnail;
             await DB.save(m, canvasJSON);
@@ -333,6 +378,8 @@ async closeTab(id) {
             const t = tabState[activeId];
             if (!t) return;
             const canvasJSON = S.fc.toJSON();
+            // Rewrite live object URLs back to idb:// refs before persisting
+            DB.rewriteToIdbRefs(canvasJSON, S.urlToIdb);
             t.canvasJSON = canvasJSON;
             t.meta.thumbnail = await DC.exportThumbnail();
             await DB.save(t.meta, canvasJSON);

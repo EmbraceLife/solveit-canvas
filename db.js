@@ -1,10 +1,13 @@
 // IndexedDB storage for multi-tab canvas persistence
-// Two stores: 'meta' for lightweight metadata, 'data' for heavy canvasJSON (lazy loaded)
+// Three stores: 'meta' for lightweight metadata, 'data' for heavy canvasJSON (lazy loaded),
+// 'images' for pasted image blobs (referenced from canvas JSON via idb:// URLs)
 (function () {
     const DB_NAME = 'solveit-drawing';
-    const DB_VERSION = 1;
+    const DB_VERSION = 2;
     const META = 'meta';
     const DATA = 'data';
+    const IMAGES = 'images';
+    const IDB_PREFIX = 'idb://';
 
     let dbPromise = null;
 
@@ -14,11 +17,17 @@
             const req = indexedDB.open(DB_NAME, DB_VERSION);
             req.onupgradeneeded = e => {
                 const db = e.target.result;
-                for (const name of db.objectStoreNames) db.deleteObjectStore(name);
-                const meta = db.createObjectStore(META, { keyPath: 'id' });
-                meta.createIndex('dialogName', 'dialogName', { unique: false });
-                meta.createIndex('updatedAt', 'updatedAt');
-                db.createObjectStore(DATA, { keyPath: 'id' });
+                if (!db.objectStoreNames.contains(META)) {
+                    const meta = db.createObjectStore(META, { keyPath: 'id' });
+                    meta.createIndex('dialogName', 'dialogName', { unique: false });
+                    meta.createIndex('updatedAt', 'updatedAt');
+                }
+                if (!db.objectStoreNames.contains(DATA)) {
+                    db.createObjectStore(DATA, { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains(IMAGES)) {
+                    db.createObjectStore(IMAGES, { keyPath: 'id' });
+                }
             };
             req.onsuccess = () => resolve(req.result);
             req.onerror = () => reject(req.error);
@@ -27,6 +36,8 @@
     }
 
     window.DrawingDB = {
+        IDB_PREFIX,
+
         /** Save metadata + optionally canvas data in a single transaction */
         async save(meta, canvasJSON) {
             const db = await openDB();
@@ -103,6 +114,102 @@
                 createdAt: now,
                 updatedAt: now,
             };
+        },
+
+        // --- Image blob store ---
+
+        /** Save an image blob, returns its ID */
+        async saveImage(blob) {
+            const db = await openDB();
+            const id = crypto.randomUUID();
+            return new Promise((resolve, reject) => {
+                const t = db.transaction(IMAGES, 'readwrite');
+                t.objectStore(IMAGES).put({ id, blob, type: blob.type });
+                t.oncomplete = () => resolve(id);
+                t.onerror = () => reject(t.error);
+            });
+        },
+
+        /** Load an image blob by ID, returns { blob, type } or null */
+        async loadImage(id) {
+            const db = await openDB();
+            return new Promise((resolve, reject) => {
+                const req = db.transaction(IMAGES).objectStore(IMAGES).get(id);
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => reject(req.error);
+            });
+        },
+
+        /** Delete an image by ID */
+        async deleteImage(id) {
+            const db = await openDB();
+            return new Promise((resolve, reject) => {
+                const t = db.transaction(IMAGES, 'readwrite');
+                t.objectStore(IMAGES).delete(id);
+                t.oncomplete = () => resolve();
+                t.onerror = () => reject(t.error);
+            });
+        },
+
+        /** Get all image IDs currently in the store */
+        async getAllImageIds() {
+            const db = await openDB();
+            return new Promise((resolve, reject) => {
+                const req = db.transaction(IMAGES).objectStore(IMAGES).getAllKeys();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = () => reject(req.error);
+            });
+        },
+
+        /** Convert a blob to a temporary object URL for fabric to render */
+        blobToObjectURL(blob) {
+            return URL.createObjectURL(blob);
+        },
+
+        /** Resolve all idb:// src references in a canvasJSON to object URLs.
+         *  Returns a cleanup function that revokes all created URLs. */
+        async resolveImageRefs(canvasJSON) {
+            if (!canvasJSON?.objects) return () => {};
+            const urlMap = {};  // imageId -> objectURL
+            const toResolve = [];
+
+            for (const obj of canvasJSON.objects) {
+                const src = obj.src;
+                if (src && src.startsWith(IDB_PREFIX)) {
+                    const imgId = src.slice(IDB_PREFIX.length);
+                    if (!urlMap[imgId]) toResolve.push(imgId);
+                }
+            }
+
+            // Load all needed images in parallel
+            const results = await Promise.all(toResolve.map(id => DrawingDB.loadImage(id)));
+            toResolve.forEach((id, i) => {
+                if (results[i]?.blob) urlMap[id] = URL.createObjectURL(results[i].blob);
+            });
+
+            // Rewrite src fields
+            for (const obj of canvasJSON.objects) {
+                const src = obj.src;
+                if (src && src.startsWith(IDB_PREFIX)) {
+                    const imgId = src.slice(IDB_PREFIX.length);
+                    if (urlMap[imgId]) obj.src = urlMap[imgId];
+                    else console.warn('[DrawingDB] Missing image for', imgId);
+                }
+            }
+
+            // Return cleanup function
+            return () => Object.values(urlMap).forEach(u => URL.revokeObjectURL(u));
+        },
+
+        /** Rewrite temporary object URLs back to idb:// refs in canvasJSON.
+         *  Uses the urlToIdb map maintained by the canvas module. */
+        rewriteToIdbRefs(canvasJSON, urlToIdb) {
+            if (!canvasJSON?.objects) return;
+            for (const obj of canvasJSON.objects) {
+                if (obj.src && urlToIdb.has(obj.src)) {
+                    obj.src = IDB_PREFIX + urlToIdb.get(obj.src);
+                }
+            }
         },
     };
 })();
