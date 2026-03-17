@@ -138,8 +138,13 @@
             });
             toolbar.append(opacityWrap, makeSep());
 
-            // Expose toolbar elements for keyboard shortcuts (canvas.js reads these)
-            S.toolbarEls = { shape: shapeWrap, thickness: thicknessSelect, color: colorWrap, opacity: opacityWrap };
+            // Expose toolbar buttons + menus for keyboard shortcuts (canvas.js reads these)
+            S.toolbarEls = {
+                shape:     { btn: shapeWrap.querySelector('button'),   menu: shapeWrap.querySelector('div') },
+                thickness: { el: thicknessSelect },
+                color:     { btn: colorWrap.querySelector('button'),   menu: colorWrap.querySelector('div') },
+                opacity:   { btn: opacityWrap.querySelector('button'), menu: opacityWrap.querySelector('div') },
+            };
 
             // Undo / Redo / Clear
             function makeBtn(icon, title, fn) {

@@ -225,12 +225,11 @@ _swapStack(from, to, reverse) {
                         DC.setMode(mode);
                         console.log('[Canvas Keyboard]', e.key, '→', mode, 'mode');
                     } else if (S.toolbarEls) {
-                        const el = [S.toolbarEls.shape, S.toolbarEls.thickness, S.toolbarEls.color, S.toolbarEls.opacity][n - 4];
-                        // For <select> elements, simulate click to open native dropdown
-                        if (el.tagName === 'SELECT') { el.focus(); el.showPicker?.(); }
-                        // For dropdown wraps, click the button inside to toggle the menu
-                        else { const btn = el.querySelector('button'); if (btn) btn.click(); }
-                        console.log('[Canvas Keyboard]', e.key, '→ opened', ['shape', 'thickness', 'color', 'opacity'][n - 4]);
+                        const names = ['shape', 'thickness', 'color', 'opacity'];
+                        const tool = S.toolbarEls[names[n - 4]];
+                        if (tool.el) { tool.el.focus(); tool.el.showPicker?.(); }
+                        else if (tool.menu) { tool.menu.style.display = tool.menu.style.display === 'none' ? 'block' : 'none'; }
+                        console.log('[Canvas Keyboard]', e.key, '→ opened', names[n - 4]);
                     }
                     e.stopPropagation(); e.preventDefault(); return;
                 }
