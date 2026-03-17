@@ -116,9 +116,16 @@
         },
 
         /** Bulk-delete all canvases for a dialog — removes both meta and data entries.
-         *  Design: single transaction for atomicity — either all delete or none do. */
+         *  Design: single transaction for atomicity — either all delete or none do.
+         *  Why two paths? IndexedDB indexes skip null/undefined keys — records with no
+         *  dialogName are invisible to getByDialog(). For orphaned canvases (dialog deleted
+         *  but canvas remains), we must scan ALL metas and filter manually. */
         async deleteByDialog(dialogName) {
-            const metas = await this.getByDialog(dialogName);
+            // Orphan path: dialogName is null/undefined/empty → index can't find these
+            const metas = (!dialogName)
+                ? (await this.getAll()).filter(m => !m.dialogName)
+                : await this.getByDialog(dialogName);
+            console.log('[DrawingDB] deleteByDialog:', dialogName, '→ found', metas.length, 'canvases via', (!dialogName ? 'full scan (orphan path)' : 'index lookup'));
             if (metas.length === 0) return 0;
             const db = await openDB();
             return new Promise((resolve, reject) => {
