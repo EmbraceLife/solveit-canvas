@@ -92,20 +92,22 @@
             });
             toolbar.append(shapeWrap, makeSep());
 
-            // Thickness
-            const thicknessSelect = document.createElement('select');
-            thicknessSelect.title = 'Line thickness'; thicknessSelect.style.cssText = smallBtn + ';padding:3px 6px';
-            [1, 2, 3, 5, 8, 12, 20, 30, 50].forEach(v => {
-                const opt = document.createElement('option');
-                opt.value = v; opt.textContent = v + 'px';
-                if (v === 2) opt.selected = true;
-                thicknessSelect.appendChild(opt);
+            // Thickness — custom dropdown so key 5 can toggle open/close consistently
+            const thicknesses = [1, 2, 3, 5, 8, 12, 20, 30, 50];
+            const { wrap: thicknessWrap, btn: thicknessBtn } = makeDropdown({
+                btnHTML: S.thickness + 'px', btnTitle: 'Line thickness',
+                menuStyle: 'min-width:60px',
+                items: thicknesses.map(v => ({
+                    html: v + 'px', title: v + 'px',
+                    onClick: () => {
+                        S.thickness = v;
+                        if (S.fc && S.fc.freeDrawingBrush) S.fc.freeDrawingBrush.width = v;
+                        thicknessBtn.innerHTML = v + 'px';
+                        console.log('[Canvas Toolbar] thickness →', v + 'px');
+                    }
+                }))
             });
-            thicknessSelect.onchange = () => {
-                S.thickness = parseInt(thicknessSelect.value);
-                if (S.fc && S.fc.freeDrawingBrush) S.fc.freeDrawingBrush.width = S.thickness;
-            };
-            toolbar.appendChild(thicknessSelect);
+            toolbar.append(thicknessWrap, makeSep());
 
             // Color
             const colors = [
@@ -141,7 +143,7 @@
             // Expose toolbar buttons + menus for keyboard shortcuts (canvas.js reads these)
             S.toolbarEls = {
                 shape:     { btn: shapeWrap.querySelector('button'),   menu: shapeWrap.querySelector('div') },
-                thickness: { el: thicknessSelect },
+                thickness: { btn: thicknessWrap.querySelector('button'), menu: thicknessWrap.querySelector('div') },
                 color:     { btn: colorWrap.querySelector('button'),   menu: colorWrap.querySelector('div') },
                 opacity:   { btn: opacityWrap.querySelector('button'), menu: opacityWrap.querySelector('div') },
             };

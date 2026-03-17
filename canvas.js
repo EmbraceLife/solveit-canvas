@@ -232,11 +232,8 @@ _swapStack(from, to, reverse) {
                     } else if (S.toolbarEls) {
                         const names = ['shape', 'thickness', 'color', 'opacity'];
                         const tool = S.toolbarEls[names[n - 4]];
-                        if (tool.el) {
-                            // Native <select>: toggle by focus/blur — no hidePicker() exists
-                            if (document.activeElement === tool.el) { tool.el.blur(); console.log('[Canvas Keyboard]', e.key, '→ closed', names[n - 4]); }
-                            else { tool.el.focus(); tool.el.showPicker?.(); console.log('[Canvas Keyboard]', e.key, '→ opened', names[n - 4]); }
-                        } else if (tool.menu) {
+                        // All tools use custom dropdowns — toggle menu visibility
+                        if (tool.menu) {
                             tool.menu.style.display = tool.menu.style.display === 'none' ? 'block' : 'none';
                             console.log('[Canvas Keyboard]', e.key, '→ toggled', names[n - 4]);
                         }
