@@ -92,6 +92,46 @@
             });
         },
 
+        /** Get serialized byte size of every canvas data entry — { id: bytes }
+         *  Design: cursor walk over DATA store, stringify each canvasJSON to measure real size.
+         *  Why stringify? IndexedDB stores structured clones, but JSON.stringify length is the
+         *  closest proxy for what the user actually "paid" in storage for embedded data URLs. */
+        async getAllDataSizes() {
+            const db = await openDB();
+            return new Promise((resolve, reject) => {
+                const sizes = {};
+                const req = db.transaction(DATA).objectStore(DATA).openCursor();
+                req.onsuccess = e => {
+                    const cursor = e.target.result;
+                    if (cursor) {
+                        sizes[cursor.key] = JSON.stringify(cursor.value?.canvasJSON || '').length;
+                        cursor.continue();
+                    } else {
+                        console.log('[DrawingDB] getAllDataSizes:', Object.keys(sizes).length, 'entries, total', Object.values(sizes).reduce((a, b) => a + b, 0), 'bytes');
+                        resolve(sizes);
+                    }
+                };
+                req.onerror = () => reject(req.error);
+            });
+        },
+
+        /** Bulk-delete all canvases for a dialog — removes both meta and data entries.
+         *  Design: single transaction for atomicity — either all delete or none do. */
+        async deleteByDialog(dialogName) {
+            const metas = await this.getByDialog(dialogName);
+            if (metas.length === 0) return 0;
+            const db = await openDB();
+            return new Promise((resolve, reject) => {
+                const t = db.transaction([META, DATA], 'readwrite');
+                for (const m of metas) { t.objectStore(META).delete(m.id); t.objectStore(DATA).delete(m.id); }
+                t.oncomplete = () => {
+                    console.log('[DrawingDB] deleteByDialog:', dialogName, '→ removed', metas.length, 'canvases');
+                    resolve(metas.length);
+                };
+                t.onerror = () => reject(t.error);
+            });
+        },
+
         /** Create a new metadata record (does NOT save to DB — caller must call save()) */
         createMeta(name, dialogName) {
             const now = Date.now();

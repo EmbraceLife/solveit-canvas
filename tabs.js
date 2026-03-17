@@ -219,8 +219,57 @@ addBtn = document.createElement('div');
                 return s;
             }
 
+            // Format bytes into human-readable size — design: show KB for small, MB for large
+            function fmtSize(bytes) {
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                return (bytes / 1048576).toFixed(1) + ' MB';
+            }
+
+            // Build a dialog group header with size label + bulk delete button
+            // Design: size tells user what they're paying, delete button lets them reclaim it
+            function dialogGroupHeader(dlgName, metas, sizes) {
+                const totalBytes = metas.reduce((sum, m) => sum + (sizes[m.id] || 0), 0);
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:3px 12px 1px';
+
+                const left = document.createElement('span');
+                left.style.cssText = 'font-size:10px;color:#666;font-style:italic;overflow:hidden;text-overflow:ellipsis';
+                left.textContent = (dlgName || '(no dialog)') + '  ';
+
+                const sizeLabel = document.createElement('span');
+                sizeLabel.style.cssText = 'font-size:9px;color:#999;font-family:monospace';
+                sizeLabel.textContent = '(' + fmtSize(totalBytes) + ')';
+                left.appendChild(sizeLabel);
+
+                const delBtn = document.createElement('span');
+                delBtn.textContent = '🗑️';
+                delBtn.title = 'Delete all ' + metas.length + ' canvases from ' + (dlgName || 'this dialog');
+                delBtn.style.cssText = 'font-size:11px;opacity:0.4;cursor:pointer;flex-shrink:0;margin-left:4px';
+                delBtn.onmouseenter = () => delBtn.style.opacity = '1';
+                delBtn.onmouseleave = () => delBtn.style.opacity = '0.4';
+                delBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    const msg = 'Delete ' + metas.length + ' canvas(es) from "' + dlgName + '"? (' + fmtSize(totalBytes) + ')';
+                    if (!confirm(msg)) return;
+                    console.log('[Solveit Canvas] Bulk delete confirmed for', dlgName, '→', metas.length, 'canvases,', fmtSize(totalBytes));
+                    // Close any open tabs that belong to this dialog before deleting
+                    for (const m of metas) { if (tabState[m.id]) await window.DrawingTabs.closeTab(m.id); }
+                    await DB.deleteByDialog(dlgName);
+                    console.log('[Solveit Canvas] Bulk delete complete for', dlgName);
+                    await rebuildMenu();
+                };
+
+                row.append(left, delBtn);
+                return row;
+            }
+
             async function rebuildMenu() {
                 addMenu.innerHTML = '';
+                // Fetch all data sizes once — shared across all sections
+                const sizes = await DB.getAllDataSizes();
+                console.log('[Solveit Canvas] rebuildMenu: loaded sizes for', Object.keys(sizes).length, 'canvases');
+
                 // New blank
                 addMenu.appendChild(menuItem('New blank', { bold: true, onClick: () => window.DrawingTabs.newTab() }));
 
@@ -229,10 +278,8 @@ addBtn = document.createElement('div');
                 const closed = allDialog.filter(m => !tabState[m.id]);
                 if (closed.length > 0) {
                     addMenu.appendChild(menuSep());
-                    const header = document.createElement('div');
-                    header.textContent = 'Open';
-                    header.style.cssText = 'padding:4px 12px 2px;font-size:10px;text-transform:uppercase;color:#999;font-weight:600';
-                    addMenu.appendChild(header);
+                    // Show current dialog group header with size
+                    addMenu.appendChild(dialogGroupHeader(S.dialogName, allDialog, sizes));
                     closed.forEach(m => {
                         addMenu.appendChild(menuItem(m.name, {
                             thumbnail: m.thumbnail,
@@ -255,14 +302,11 @@ addBtn = document.createElement('div');
                     header.textContent = 'Import from other dialogs';
                     header.style.cssText = 'padding:4px 12px 2px;font-size:10px;text-transform:uppercase;color:#999;font-weight:600';
                     addMenu.appendChild(header);
-                    // Group by dialog
+                    // Group by dialog — each group gets size display + bulk delete
                     const grouped = {};
                     other.forEach(m => { (grouped[m.dialogName] = grouped[m.dialogName] || []).push(m); });
                     Object.entries(grouped).forEach(([dlg, metas]) => {
-                        const dlgHeader = document.createElement('div');
-                        dlgHeader.textContent = dlg || '(no dialog)';
-                        dlgHeader.style.cssText = 'padding:3px 12px 1px;font-size:10px;color:#666;font-style:italic';
-                        addMenu.appendChild(dlgHeader);
+                        addMenu.appendChild(dialogGroupHeader(dlg, metas, sizes));
                         metas.forEach(m => {
                             addMenu.appendChild(menuItem(ICONS.import + ' ' + m.name, {
                                 thumbnail: m.thumbnail,
