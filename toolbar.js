@@ -138,6 +138,9 @@
             });
             toolbar.append(opacityWrap, makeSep());
 
+            // Expose toolbar elements for keyboard shortcuts (canvas.js reads these)
+            S.toolbarEls = { shape: shapeWrap, thickness: thicknessSelect, color: colorWrap, opacity: opacityWrap };
+
             // Undo / Redo / Clear
             function makeBtn(icon, title, fn) {
                 const b = document.createElement('button');
@@ -229,6 +232,14 @@ toolbar.append(dotToggle, makeSep());
 
             promptWrap.append(promptBtn, promptDropBtn, promptPopup, presetMenu);
             toolbar.append(promptWrap, makeSep());
+
+
+            // Expose toolbar elements for keyboard shortcuts (canvas.js reads these)
+            S.toolbarEls = { shapeWrap, thicknessSelect, colorWrap, opacityWrap };
+
+
+            // Expose toolbar elements for keyboard shortcuts (canvas.js reads these)
+            S.toolbarEls = { shapeWrap, thicknessSelect, colorWrap, opacityWrap };
 
             return toolbar;
         }

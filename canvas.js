@@ -216,6 +216,24 @@ _swapStack(from, to, reverse) {
                     window.DrawingTabs?.save();
                     e.stopPropagation(); e.preventDefault(); return;
                 }
+                // Number keys 1-7: toolbar shortcuts — work in all modes
+                // 1=draw, 2=select, 3=pan (instant switch), 4-7=open dropdowns
+                if (e.key >= '1' && e.key <= '7' && !e.ctrlKey && !e.metaKey) {
+                    const n = parseInt(e.key);
+                    if (n <= 3) {
+                        const mode = ['draw', 'select', 'pan'][n - 1];
+                        DC.setMode(mode);
+                        console.log('[Canvas Keyboard]', e.key, '→', mode, 'mode');
+                    } else if (S.toolbarEls) {
+                        const el = [S.toolbarEls.shape, S.toolbarEls.thickness, S.toolbarEls.color, S.toolbarEls.opacity][n - 4];
+                        // For <select> elements, simulate click to open native dropdown
+                        if (el.tagName === 'SELECT') { el.focus(); el.showPicker?.(); }
+                        // For dropdown wraps, click the button inside to toggle the menu
+                        else { const btn = el.querySelector('button'); if (btn) btn.click(); }
+                        console.log('[Canvas Keyboard]', e.key, '→ opened', ['shape', 'thickness', 'color', 'opacity'][n - 4]);
+                    }
+                    e.stopPropagation(); e.preventDefault(); return;
+                }
                 const mod = e.ctrlKey || e.metaKey;
                 if (mod || S.mode !== 'select') return;
                 if (e.key === 'c' || e.key === 'x') {
