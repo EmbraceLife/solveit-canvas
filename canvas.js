@@ -216,8 +216,13 @@ _swapStack(from, to, reverse) {
                     window.DrawingTabs?.save();
                     e.stopPropagation(); e.preventDefault(); return;
                 }
+                // Arrow keys: when any canvas dropdown is open, navigate items instead of dialog messages
+                const anyMenuOpen = window.DrawingToolbar?.openMenus?.some(m => m.style.display !== 'none');
+                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && anyMenuOpen) {
+                    e.stopPropagation(); return;  // let browser handle menu navigation, but block dialog
+                }
                 // Number keys 1-7: toolbar shortcuts — work in all modes
-                // 1=draw, 2=select, 3=pan (instant switch), 4-7=open dropdowns
+                // 1=draw, 2=select, 3=pan (instant switch), 4-7=open/close dropdowns
                 if (e.key >= '1' && e.key <= '7' && !e.ctrlKey && !e.metaKey) {
                     const n = parseInt(e.key);
                     if (n <= 3) {
@@ -227,9 +232,14 @@ _swapStack(from, to, reverse) {
                     } else if (S.toolbarEls) {
                         const names = ['shape', 'thickness', 'color', 'opacity'];
                         const tool = S.toolbarEls[names[n - 4]];
-                        if (tool.el) { tool.el.focus(); tool.el.showPicker?.(); }
-                        else if (tool.menu) { tool.menu.style.display = tool.menu.style.display === 'none' ? 'block' : 'none'; }
-                        console.log('[Canvas Keyboard]', e.key, '→ opened', names[n - 4]);
+                        if (tool.el) {
+                            // Native <select>: toggle by focus/blur — no hidePicker() exists
+                            if (document.activeElement === tool.el) { tool.el.blur(); console.log('[Canvas Keyboard]', e.key, '→ closed', names[n - 4]); }
+                            else { tool.el.focus(); tool.el.showPicker?.(); console.log('[Canvas Keyboard]', e.key, '→ opened', names[n - 4]); }
+                        } else if (tool.menu) {
+                            tool.menu.style.display = tool.menu.style.display === 'none' ? 'block' : 'none';
+                            console.log('[Canvas Keyboard]', e.key, '→ toggled', names[n - 4]);
+                        }
                     }
                     e.stopPropagation(); e.preventDefault(); return;
                 }
