@@ -121,11 +121,13 @@
          *  dialogName are invisible to getByDialog(). For orphaned canvases (dialog deleted
          *  but canvas remains), we must scan ALL metas and filter manually. */
         async deleteByDialog(dialogName) {
-            // Orphan path: dialogName is null/undefined/empty → index can't find these
-            const metas = (!dialogName)
+            // Orphan path: dialogName is null/undefined/empty/"null" → index can't find these
+            // Why check "null" string? Object.entries() converts null keys to the string "null"
+            const isOrphan = !dialogName || dialogName === 'null';
+            const metas = isOrphan
                 ? (await this.getAll()).filter(m => !m.dialogName)
                 : await this.getByDialog(dialogName);
-            console.log('[DrawingDB] deleteByDialog:', dialogName, '→ found', metas.length, 'canvases via', (!dialogName ? 'full scan (orphan path)' : 'index lookup'));
+            console.log('[DrawingDB] deleteByDialog:', dialogName, '→ found', metas.length, 'canvases via', (isOrphan ? 'full scan (orphan path)' : 'index lookup'));
             if (metas.length === 0) return 0;
             const db = await openDB();
             return new Promise((resolve, reject) => {
