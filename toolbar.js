@@ -237,15 +237,6 @@ toolbar.append(dotToggle, makeSep());
 
             promptWrap.append(promptBtn, promptDropBtn, promptPopup, presetMenu);
             toolbar.append(promptWrap, makeSep());
-
-
-            // Expose toolbar elements for keyboard shortcuts (canvas.js reads these)
-            S.toolbarEls = { shapeWrap, thicknessSelect, colorWrap, opacityWrap };
-
-
-            // Expose toolbar elements for keyboard shortcuts (canvas.js reads these)
-            S.toolbarEls = { shapeWrap, thicknessSelect, colorWrap, opacityWrap };
-
             return toolbar;
         }
     };
