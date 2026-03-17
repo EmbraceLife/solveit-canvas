@@ -123,8 +123,8 @@
             };
             input.addEventListener('blur', finish);
             input.addEventListener('keydown', e => {
-                if (e.key === 'Enter') { e.preventDefault(); finish(); }
-                if (e.key === 'Escape') { input.value = t.meta.name; finish(); }
+                if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); finish(); }
+                if (e.key === 'Escape') { e.stopPropagation(); input.value = t.meta.name; finish(); }
             });
             name.replaceWith(input);
             input.focus(); input.select();

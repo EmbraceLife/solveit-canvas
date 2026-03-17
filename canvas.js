@@ -205,10 +205,16 @@ _swapStack(from, to, reverse) {
                 const fc = S.fc;
                 if (!fc) return;
                 if (fc.getActiveObject()?.isEditing) return;
+                const tag = document.activeElement?.tagName;
+                if (tag === 'TEXTAREA' || tag === 'INPUT') return;
                 if ((e.key === 'Delete' || e.key === 'Backspace') && S.mode === 'select') {
                     const active = fc.getActiveObjects();
                     if (active.length === 0) return;
                     const action = { type: 'remove', objects: active.slice() }; DC.pushUndo(action); DC._runAction(action, false); e.stopPropagation(); e.preventDefault(); return;
+                }
+                if (e.key === 's') {
+                    window.DrawingTabs?.save();
+                    e.stopPropagation(); e.preventDefault(); return;
                 }
                 const mod = e.ctrlKey || e.metaKey;
                 if (mod || S.mode !== 'select') return;
